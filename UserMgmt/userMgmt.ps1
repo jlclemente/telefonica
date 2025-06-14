@@ -1,3 +1,29 @@
+<#
+.SYNOPSIS
+    Gestión de usuarios en Active Directory o en un entorno de trabajo.
+
+.DESCRIPTION
+    Conjunto de funciones para agregar, modificar, eliminar y consultar usuarios en Active Directory.
+
+.EXAMPLE
+    .\userMgmt.ps1
+
+.OUTPUTS
+    Genera eventos en el visor de eventos y logs en archivos locales y SYSVOL.
+    Muestra información en la consola sobre las acciones realizadas.
+
+.NOTES
+    Nombre:       Juan L. Clemente
+    Fecha:        9/06/2023
+    Versión:      1.0.0
+    Contacto:     juan.clemente@telefonica.com
+    Repositorio:  https://github.com/jlclemente/telefonica
+    Licencia:     GPL-3.0
+
+.LINK
+    https://github.com/jlclemente/telefonica
+#>
+
 # Importar módulo de Active Directory (si no está cargado)
 Import-Module ActiveDirectory -ErrorAction SilentlyContinue
 
