@@ -18,7 +18,8 @@
     Versión:      1.0.0
     Contacto:     juan.clemente@telefonica.com
     Repositorio:  https://github.com/jlclemente/telefonica
-    Licencia:     GPL-3.0
+    Licencia:     Este software es propiedad exclusiva de TCCT.
+                  Queda prohibida su distribución, modificación o uso no autorizado.
 
 .LINK
     https://github.com/jlclemente/telefonica
