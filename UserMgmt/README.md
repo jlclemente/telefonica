@@ -1,54 +1,5 @@
+# Introducción
 
-
-# Índice 
-[1.**	**Introducción	3****](#_toc200540732)**
-
-[**2.**	**Requisitos Técnicos	3****](#_toc200540733)
-
-[**3.**	**Funciones Disponibles	4****](#_toc200540734)
-
-[1.1	Agregar-Usuario	4](#_toc200540735)
-
-[1.2	Ver-EstadoUsuario	4](#_toc200540736)
-
-[1.3	Modificar-Usuario	4](#_toc200540737)
-
-[1.4	Eliminar-Usuario	5](#_toc200540738)
-
-[1.5	Auditar-UsuariosInactivos90Dias	5](#_toc200540739)
-
-[1.6	Auditar-UsuariosDeshabilitados60Dias	5](#_toc200540740)
-
-[1.7	Desbloquear-UsuarioContraseña	5](#_toc200540741)
-
-[1.8	Agregar-ListadoUsuarios	6](#_toc200540742)
-
-[**2.**	**Registro de Acciones	6****](#_toc200540743)
-
-[2.1	Logs Locales	6](#_toc200540744)
-
-[2.2	Logs en Red (solo DCs)	6](#_toc200540745)
-
-[2.3	Event Viewer	7](#_toc200540746)
-
-[**3.**	**Seguridad y Trazabilidad	7****](#_toc200540747)
-
-[3.1	Validaciones Automáticas	7](#_toc200540748)
-
-[3.2	Campos Comunes en Logs	7](#_toc200540749)
-
-[**4.**	**Posibles Extensiones Futuras	8****](#_toc200540750)
-
-[**5.**	**Conclusiones	9****](#_toc200540751)
-
-
-
-
-
-
-
-
-1. # <a name="_toc200540732"></a>Introducción
 El siguiente informe técnico describe una herramienta desarrollada en PowerShell que permite la gestión avanzada de usuarios en Active Directory , diseñada específicamente para entornos Windows Server con rol de Controlador de Dominio (DC) .
 
 La herramienta está orientada al personal técnico de Telefonica TCCT y cumple con políticas de seguridad estrictas, como:
@@ -59,7 +10,8 @@ Validación de autorización RSO
 
 Registros completos de todas las acciones realizadas
 
------
+---
+
 **Objetivo del Documento**
 
 Este documento tiene como finalidad:
@@ -68,21 +20,29 @@ Este documento tiene como finalidad:
 - Explicar el flujo de cada función disponible
 - Detallar cómo se registran las acciones
 - Proponer posibles mejoras futuras
+
 1. # <a name="_toc200540733"></a>Requisitos Técnicos
 
-|Componente|Requerimiento|
-| :- | :- |
-|Sistema Operativo|Windows Server con rol de Controlador de Dominio|
-|Módulo necesario|ActiveDirectory (importado automáticamente)|
-|Dominio requerido|vdc.adm(en funciones críticas)|
-|Permisos|El usuario debe tener permisos de administrador o delegado en AD|
-|Archivos necesarios|userMgmt.log(local y SYSVOL en DCs)|
-|Entorno|PowerShell 5.1+ o PowerShell Core|
 
------
-1. # <a name="_toc200540734"></a>Funciones Disponibles
-   1. ## <a name="_toc200540735"></a>**Agregar-Usuario**
-Permite crear manualmente un nuevo usuario en Active Directory.\
+| Componente          | Requerimiento                                                    |
+| :-------------------- | :----------------------------------------------------------------- |
+| Sistema Operativo   | Windows Server con rol de Controlador de Dominio                 |
+| Módulo necesario   | ActiveDirectory (importado automáticamente)                     |
+| Dominio requerido   | vdc.adm(en funciones críticas)                                  |
+| Permisos            | El usuario debe tener permisos de administrador o delegado en AD |
+| Archivos necesarios | userMgmt.log(local y SYSVOL en DCs)                              |
+| Entorno             | PowerShell 5.1+ o PowerShell Core                                |
+
+---
+
+
+# Funciones Disponibles
+
+
+## Agregar-Usuario
+
+Permite crear manualmente un nuevo usuario en Active Directory.
+
 Se solicita:
 
 - Matrícula (sAMAccountName)
@@ -97,8 +57,13 @@ Acciones:
 - Crea el usuario
 - Asigna grupos
 - Registra en log y evento
------
-1. ## <a name="_toc200540736"></a>**Ver-EstadoUsuario**
+
+---
+
+
+## **Ver-EstadoUsuario**
+
+
 Muestra información detallada de un usuario sin realizar cambios:
 
 - Nombre completo
@@ -111,8 +76,10 @@ Muestra información detallada de un usuario sin realizar cambios:
 
 Solo disponible en Controladores de Dominio.
 
------
+---
+
 1. ## <a name="_toc200540737"></a>**Modificar-Usuario**
+
 Permite modificar datos de un usuario existente:
 
 - Nombre y apellidos
@@ -124,8 +91,10 @@ Permite modificar datos de un usuario existente:
 
 Se registra toda acción en logs y eventos.
 
------
+---
+
 1. ## <a name="_toc200540738"></a>**Eliminar-Usuario**
+
 Ofrece dos opciones:
 
 - Eliminar permanentemente : Se borra el usuario del directorio
@@ -136,10 +105,12 @@ También permite registrar:
 - Motivo del cambio
 - Usuario que realiza la acción
 - Si fue autorizado por el RSO
------
+
+---
+
 1. ## <a name="_toc200540739"></a>**Auditar-UsuariosInactivos90Dias**
-Busca usuarios habilitados que no han iniciado sesión en más de 90 días.\
-Opciones:
+
+Busca usuarios habilitados que no han iniciado sesión en más de 90 días.Opciones:
 
 - Deshabilitar y mover todos automáticamente
 - Procesar uno a uno
@@ -147,13 +118,14 @@ Opciones:
 
 Solo funciona en el dominio vdc.adm.
 
-\
+
 Registra en log local, red (SYSVOL) y evento de sistema.
 
------
+---
+
 1. ## <a name="_toc200540740"></a>**Auditar-UsuariosDeshabilitados60Dias**
-Busca usuarios deshabilitados desde hace más de 60 días.\
-Opciones:
+
+Busca usuarios deshabilitados desde hace más de 60 días.Opciones:
 
 - Eliminar todos
 - Seleccionar uno a uno
@@ -161,8 +133,10 @@ Opciones:
 
 Requiere ser ejecutado en un Controlador de Dominio del dominio vdc.adm.
 
------
+---
+
 1. ## <a name="_toc200540741"></a>**Desbloquear-UsuarioContraseña**
+
 Función destinada a:
 
 - Desbloquear cuentas bloqueadas
@@ -172,8 +146,10 @@ Función destinada a:
 
 Se muestra estado actual del usuario y se pide confirmación antes de realizar cualquier cambio.
 
------
+---
+
 1. ## <a name="_toc200540742"></a>**Agregar-ListadoUsuarios**
+
 Importa un archivo CSV con las siguientes columnas:
 
 - matricula
@@ -181,14 +157,17 @@ Importa un archivo CSV con las siguientes columnas:
 - apellidos
 - mail
 
-Crea múltiples usuarios en una OU seleccionada.\
-Asigna automáticamente los grupos disponibles en esa OU.\
-Muestra resumen antes de aplicar cambios.\
+Crea múltiples usuarios en una OU seleccionada.
+Asigna automáticamente los grupos disponibles en esa OU.
+Muestra resumen antes de aplicar cambios.
 También genera contraseñas seguras.
 
------
+---
+
 1. # <a name="_toc200540743"></a>Registro de Acciones
+
    1. ## <a name="_toc200540744"></a>**Logs Locales**
+
 Se guardan en:
 
 ***C:\Windows\Logs\userMgmt.log***
@@ -204,6 +183,7 @@ En el servidor compartido:
 ***\\<dominio>\sysvol\<dominio>\Logs\userMgmt.log***
 
 1. ## <a name="_toc200540746"></a>**Event Viewer**
+
 Registro en canal personalizado:
 
 **RegistroUsuarios**
@@ -236,9 +216,12 @@ Ejemplo de mensaje en evento:
 
 **Resultado: Usuario creado correctamente.**
 
------
+---
+
 1. # <a name="_toc200540747"></a>Seguridad y Trazabilidad
+
    1. ## <a name="_toc200540748"></a>**Validaciones Automáticas**
+
 Solo se permiten funciones críticas en Controladores de Dominio
 
 Algunas funciones solo se ejecutan en el dominio vdc.adm
@@ -247,30 +230,34 @@ En cada función se pregunta si la acción está autorizada por el RSO
 
 1. ## <a name="_toc200540749"></a>**Campos Comunes en Logs**
 
-|Campo|Descripción|
-| :- | :- |
-|tipoEvento|Éxito, Error, Información, Advertencia|
-|incidencia|Motivo del cambio|
-|usuarioRealizador|Quién hizo la acción|
-|usuarioAfectado|Sobre quién se realizó|
-|ouDestino|Dónde se movió el usuario|
-|gruposAsignados|Grupos añadidos o quitados|
-|descripcion|Descripción del usuario actualizada|
-|autorizadoRSO|¿Está autorizado?|
-|resultado|Qué se hizo exactamente|
 
------
+| Campo             | Descripción                             |
+| :------------------ | :----------------------------------------- |
+| tipoEvento        | Éxito, Error, Información, Advertencia |
+| incidencia        | Motivo del cambio                        |
+| usuarioRealizador | Quién hizo la acción                   |
+| usuarioAfectado   | Sobre quién se realizó                 |
+| ouDestino         | Dónde se movió el usuario              |
+| gruposAsignados   | Grupos añadidos o quitados              |
+| descripcion       | Descripción del usuario actualizada     |
+| autorizadoRSO     | ¿Está autorizado?                      |
+| resultado         | Qué se hizo exactamente                 |
+
+---
+
 1. # <a name="_toc200540750"></a>Posibles Extensiones Futuras
 
-|Número|Función|Descripción|
-| :- | :- | :- |
-|9|Exportar-InformeUsuarios|Generar CSV con usuarios activos, inactivos o deshabilitados|
-|10|Archivar-Usuarios|Mover usuarios antiguos a carpeta compartida de archivos|
-|11|Crear-NuevosGrupos|Crear grupos definidos en plantilla|
-|12|Restaurar-Usuarios|Recuperar usuarios eliminados|
-|13|Reporte-Mensual|Auditoría automatizada mensual|
 
------
+| Número | Función                 | Descripción                                                 |
+| :-------- | :------------------------- | :------------------------------------------------------------- |
+| 9       | Exportar-InformeUsuarios | Generar CSV con usuarios activos, inactivos o deshabilitados |
+| 10      | Archivar-Usuarios        | Mover usuarios antiguos a carpeta compartida de archivos     |
+| 11      | Crear-NuevosGrupos       | Crear grupos definidos en plantilla                          |
+| 12      | Restaurar-Usuarios       | Recuperar usuarios eliminados                                |
+| 13      | Reporte-Mensual          | Auditoría automatizada mensual                              |
+
+---
+
 1. # <a name="_toc200540751"></a>Conclusiones
 
 Este script proporciona una solución robusta y profesional para gestionar usuarios en Active Directory dentro del entorno de Telefonica TCCT .
@@ -284,8 +271,3 @@ Sus principales ventajas son:
 - Soporte tanto para tareas individuales como masivas
 
 Es ideal para equipos técnicos que requieren realizar cambios auditables y documentados en el directorio activo.
-
-
-
-
-
