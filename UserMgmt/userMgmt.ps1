@@ -15,7 +15,7 @@
 .NOTES
     Nombre:       Juan L. Clemente
     Fecha:        9/06/2023
-    Versión:      1.0.0
+    Versión:      1.0.1
     Contacto:     juan.clemente@telefonica.com
     Repositorio:  https://github.com/jlclemente/telefonica
     Licencia:     Este software es propiedad exclusiva de TCCT.
@@ -337,7 +337,15 @@ function Agregar-Usuario {
     $gruposAAgregar = @()
     $grupoInput = Read-Host "¿Desea asociar este usuario a algún grupo? (S/N)"
     if ($grupoInput.ToUpper() -eq 'S') {
-        $gruposAAgregar = $gruposEnOU
+        foreach ($g in $gruposEnOU) {
+            $respuesta = Read-Host "¿Asignar al grupo '$g'? (S/N)"
+            if ($respuesta.ToUpper() -eq 'S') {
+                $gruposAAgregar += $g
+                Write-Host "Grupo '$g' seleccionado." -ForegroundColor Green
+            }
+        }
+    } else {
+        Write-Host "Usuario creado sin grupos." -ForegroundColor Yellow
     }
 
     # Resumen final
@@ -369,10 +377,11 @@ function Agregar-Usuario {
                        -Description $descripcion
 
             if ($gruposAAgregar.Count -gt 0) {
-                Add-ADGroupMember -Identity $gruposAAgregar -Members $matricula
-                Write-Host "Usuario creado y grupos asignados." -ForegroundColor Green
-            } else {
-                Write-Host "Usuario creado sin grupos." -ForegroundColor Yellow
+                foreach ($grupo in $gruposAAgregar) {
+                    $grupoAD = Get-ADGroup -Identity $grupo -ErrorAction Stop
+                    Add-ADGroupMember -Identity $grupoAD -Members $matricula -ErrorAction Stop
+                    Write-Host "Usuario agregado al grupo '$grupo'." -ForegroundColor Green
+                }
             }
 
             Registrar-Log -tipoEvento "Éxito" `
@@ -603,6 +612,8 @@ function Modificar-Usuario {
                 Write-Host "OU no válida: $_" -ForegroundColor Red
             }
         } while ($true)
+    } else {
+        $rutaOUNueva = $ouActual
     }
 
     # Mostrar grupos de la OU actual
@@ -611,7 +622,7 @@ function Modificar-Usuario {
 
     if ($gruposEnOUActual.Count -gt 0) {
         Write-Host "Grupos disponibles en la OU actual:" -ForegroundColor Green
-        $gruposEnOUActual | ForEach-Object { Write-Host " - $_" -ForegroundColor White }
+        $gruposEnOUActual | ForEach-Host { Write-Host " - $_" -ForegroundColor White }
     } else {
         Write-Host "No hay grupos disponibles en esta OU." -ForegroundColor Yellow
     }
@@ -624,6 +635,7 @@ function Modificar-Usuario {
             $quitar = Read-Host "¿Desea quitar al usuario del grupo '$g'? (S/N)"
             if ($quitar.ToUpper() -eq 'S') {
                 $gruposAEliminar += $g
+                Write-Host "Usuario eliminado del grupo '$g'." -ForegroundColor Green
             }
         }
     } else {
@@ -638,7 +650,7 @@ function Modificar-Usuario {
         $mostrarGrupos = Read-Host "¿Mostrar grupos de la OU actual? (S/N)"
         if ($mostrarGrupos.ToUpper() -eq 'S') {
             Write-Host "Grupos disponibles en la OU actual:" -ForegroundColor Green
-            $gruposEnOUActual | ForEach-Object { Write-Host " - $_" -ForegroundColor White }
+            $gruposEnOUActual | ForEach-Host { Write-Host " - $_" -ForegroundColor White }
 
             $grupoInput = Read-Host "Ingrese un grupo (dejar vacío para terminar)"
             while ($grupoInput) {
@@ -651,25 +663,23 @@ function Modificar-Usuario {
                 $grupoInput = Read-Host "Ingrese otro grupo (dejar vacío para terminar)"
             }
         } else {
-            do {
-                $grupoInput = Read-Host "Ingrese el nombre del grupo a agregar (dejar vacío para terminar)"
-                if ($grupoInput) {
-                    try {
-                        $grupo = Get-ADGroup -Identity $grupoInput -ErrorAction Stop
-                        $gruposAAgregar += $grupo.Name
-                        Write-Host "Grupo '$grupoInput' agregado." -ForegroundColor Green
-                    } catch {
-                        Write-Host "Grupo no encontrado: $_" -ForegroundColor Red
-                    }
+            $grupoInput = Read-Host "Ingrese el nombre del grupo a agregar (dejar vacío para terminar)"
+            while ($grupoInput) {
+                try {
+                    $grupo = Get-ADGroup -Identity $grupoInput -ErrorAction Stop
+                    $gruposAAgregar += $grupo.Name
+                    Write-Host "Grupo '$grupoInput' agregado." -ForegroundColor Green
+                } catch {
+                    Write-Host "Grupo no encontrado: $_" -ForegroundColor Red
                 }
-            } while ($grupoInput)
+                $grupoInput = Read-Host "Ingrese otro grupo (dejar vacío para terminar)"
+            }
         }
     }
 
     # Actualizar descripción
     $descripcionAntigua = $user.Description
     $descripcionNueva = "Modificado por motivo: $incidencia. Acción realizada por: $usuarioAplicador. Fecha: $(Get-Date -Format yyyy-MM-dd)"
-
     if ($descripcionAntigua) {
         $descripcionFinal = "$descripcionAntigua | $descripcionNueva"
     } else {
@@ -690,7 +700,55 @@ function Modificar-Usuario {
     Write-Host "Grupos a agregar: $($gruposAAgregar -join ', ')" -ForegroundColor Green
 
     $proceder = Read-Host "¿Aplicar estos cambios? (S/N)"
-    if ($proceder.ToUpper() -ne 'S') {
+    if ($proceder.ToUpper() -eq 'S') {
+        try {
+            Set-ADUser -Identity $matricula `
+                       -GivenName $nombreNuevo `
+                       -Surname $apellidoNuevo `
+                       -EmailAddress $correoNuevo `
+                       -Enabled $estadoNuevo `
+                       -Description $descripcionFinal
+
+            if ($gruposAEliminar.Count -gt 0) {
+                foreach ($grupo in $gruposAEliminar) {
+                    Remove-ADGroupMember -Identity $grupo -Members $matricula -Confirm:$false -ErrorAction Stop
+                    Write-Host "Usuario eliminado del grupo '$grupo'." -ForegroundColor Green
+                }
+            }
+
+            if ($gruposAAgregar.Count -gt 0) {
+                foreach ($grupo in $gruposAAgregar) {
+                    Add-ADGroupMember -Identity $grupo -Members $matricula -ErrorAction Stop
+                    Write-Host "Usuario agregado al grupo '$grupo'." -ForegroundColor Green
+                }
+            }
+
+            if ($ouActual -ne $rutaOUNueva) {
+                Move-ADObject -Identity $user.DistinguishedName -TargetPath $rutaOUNueva -ErrorAction Stop
+                Write-Host "Usuario movido a la OU '$rutaOUNueva'." -ForegroundColor Green
+            }
+
+            Registrar-Log -tipoEvento "Éxito" `
+                          -incidencia $incidencia `
+                          -usuarioRealizador $usuarioAplicador `
+                          -usuarioAfectado $matricula `
+                          -ouDestino $rutaOUNueva `
+                          -gruposAsignados ($gruposAAgregar + $gruposAEliminar) `
+                          -descripcion $descripcionFinal `
+                          -autorizadoRSO $rsoEstado `
+                          -resultado "Datos modificados: Nombre, Apellidos, Correo, Estado, Grupos, OU."
+
+            Write-Host "Usuario modificado correctamente." -ForegroundColor Green
+        } catch {
+            Registrar-Log -tipoEvento "Error" `
+                          -incidencia $incidencia `
+                          -usuarioRealizador $usuarioAplicador `
+                          -usuarioAfectado $matricula `
+                          -autorizadoRSO $rsoEstado `
+                          -resultado "Error al modificar el usuario: $_"
+            Write-Host "Error al modificar el usuario: $_" -ForegroundColor Red
+        }
+    } else {
         Registrar-Log -tipoEvento "Información" `
                       -incidencia $incidencia `
                       -usuarioRealizador $usuarioAplicador `
@@ -698,63 +756,12 @@ function Modificar-Usuario {
                       -autorizadoRSO $rsoEstado `
                       -resultado "Modificación cancelada por el usuario."
         Write-Host "Modificación cancelada por el usuario." -ForegroundColor Red
-        Pause
-        return
-    }
-
-    # Aplicar cambios
-    try {
-        Set-ADUser -Identity $matricula `
-                   -GivenName $nombreNuevo `
-                   -Surname $apellidoNuevo `
-                   -EmailAddress $correoNuevo `
-                   -Enabled $estadoNuevo `
-                   -Description $descripcionFinal
-
-        if ($gruposAEliminar.Count -gt 0) {
-            foreach ($grupo in $gruposAEliminar) {
-                Remove-ADGroupMember -Identity $grupo -Members $matricula -Confirm:$false -ErrorAction Stop
-                Write-Host "Usuario eliminado del grupo '$grupo'." -ForegroundColor Green
-            }
-        }
-
-        if ($gruposAAgregar.Count -gt 0) {
-            foreach ($grupo in $gruposAAgregar) {
-                Add-ADGroupMember -Identity $grupo -Members $matricula -ErrorAction Stop
-                Write-Host "Usuario agregado al grupo '$grupo'." -ForegroundColor Green
-            }
-        }
-
-        if ($ouActual -ne $rutaOUNueva) {
-            Move-ADObject -Identity $user.DistinguishedName -TargetPath $rutaOUNueva -ErrorAction Stop
-            Write-Host "Usuario movido a la OU '$rutaOUNueva'." -ForegroundColor Green
-        }
-
-        Registrar-Log -tipoEvento "Éxito" `
-                      -incidencia $incidencia `
-                      -usuarioRealizador $usuarioAplicador `
-                      -usuarioAfectado $matricula `
-                      -ouDestino $rutaOUNueva `
-                      -gruposAsignados ($gruposAAgregar + $gruposAEliminar) `
-                      -descripcion $descripcionFinal `
-                      -autorizadoRSO $rsoEstado `
-                      -resultado "Datos modificados: Nombre, Apellidos, Correo, Estado, Grupos, OU."
-
-        Write-Host "Usuario modificado correctamente." -ForegroundColor Green
-    } catch {
-        Registrar-Log -tipoEvento "Error" `
-                      -incidencia $incidencia `
-                      -usuarioRealizador $usuarioAplicador `
-                      -usuarioAfectado $matricula `
-                      -autorizadoRSO $rsoEstado `
-                      -resultado "Error al modificar el usuario: $_"
-        Write-Host "Error al modificar el usuario: $_" -ForegroundColor Red
     }
 
     Pause
 }
 
-# Función: Eliminar un usuario (realmente deshabilita o elimina)
+# Función: Eliminar un usuario (realmente deshabilita o elimina permanentemente)
 function Eliminar-Usuario {
     Write-Host "=== FUNCION: Eliminar / Deshabilitar un usuario ===" -ForegroundColor Cyan
 
@@ -842,7 +849,7 @@ function Eliminar-Usuario {
     $ouActual = $user.DistinguishedName -replace '^CN=.*?(OU=.*)','$1'
 
     # ¿Eliminar o deshabilitar?
-    Write-Host "`n¿Qué desea hacer con el usuario?" -ForegroundColor Yellow
+    Write-Host "`n¿Qué desea hacer con este usuario?" -ForegroundColor Yellow
     Write-Host "1. Eliminar completamente"
     Write-Host "2. Deshabilitar y mover (opcionalmente) a OU de deshabilitados"
     $opcionAccion = Read-Host "Elija una opción (1 o 2)"
@@ -908,7 +915,7 @@ function Eliminar-Usuario {
         }
     } else {
 
-        # Acción: Deshabilitar
+        # Deshabilitar cuenta
         try {
             Disable-ADAccount -Identity $matricula -ErrorAction Stop
             Write-Host "Usuario '$matricula' deshabilitado correctamente." -ForegroundColor Green
@@ -920,7 +927,6 @@ function Eliminar-Usuario {
                           -autorizadoRSO $rsoEstado `
                           -descripcion "Deshabilitado por motivo: $incidencia" `
                           -resultado "Usuario deshabilitado."
-
         } catch {
             Registrar-Log -tipoEvento "Error" `
                           -incidencia $incidencia `
@@ -933,30 +939,32 @@ function Eliminar-Usuario {
             return
         }
 
-        # Comprobar si está en OU de deshabilitados
-        if ($ouActual -match "deshabilitado") {
-            Write-Host "El usuario ya está en una OU de deshabilitados." -ForegroundColor Yellow
-            $moverOU = Read-Host "¿Mover a otra OU? (S/N)"
+        # Buscar OU que contenga 'deshabilitado'
+        $ousDeshabilitados = Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -match "deshabilitado" } | Select-Object -First 1 -ExpandProperty DistinguishedName
+
+        if ($ousDeshabilitados) {
+            $moverOU = Read-Host "¿Mover a OU de deshabilitados? (S/N)"
             if ($moverOU.ToUpper() -eq 'S') {
-                do {
-                    $rutaOU = Read-Host "Escriba la OU destino"
-                    try {
-                        $ouDestino = Get-ADOrganizationalUnit -Identity $rutaOU -ErrorAction Stop
-                        Move-ADObject -Identity $user.DistinguishedName -TargetPath $rutaOU -ErrorAction Stop
-                        Write-Host "Usuario movido a la OU destino." -ForegroundColor Green
-                    } catch {
-                        Write-Host "OU no válida: $_" -ForegroundColor Red
-                        $rutaOU = $ouActual
-                    }
-                } while (-not $ouDestino)
+                try {
+                    Move-ADObject -Identity $user.DistinguishedName -TargetPath $ousDeshabilitados -ErrorAction Stop
+                    Write-Host "Usuario movido a la OU destino." -ForegroundColor Green
+                } catch {
+                    Registrar-Log -tipoEvento "Error" `
+                                  -incidencia $incidencia `
+                                  -usuarioRealizador $usuarioAplicador `
+                                  -usuarioAfectado $matricula `
+                                  -resultado "Error al mover usuario a nueva OU: $_"
+                    Write-Host "Error al mover usuario: $_" -ForegroundColor Red
+                }
             }
         } else {
-            $rutaOU = $ouActual
+            Write-Host "No se encontró una OU de deshabilitados." -ForegroundColor Red
         }
 
         # Actualizar descripción del usuario
         $descripcionAntigua = $user.Description
         $descripcionNueva = "Deshabilitado por motivo: $incidencia. Acción realizada por: $usuarioAplicador. Fecha: $(Get-Date -Format yyyy-MM-dd)"
+
         if ($descripcionAntigua) {
             $descripcionFinal = "$descripcionAntigua | $descripcionNueva"
         } else {
@@ -965,15 +973,15 @@ function Eliminar-Usuario {
 
         Set-ADUser -Identity $matricula -Description $descripcionFinal
 
-        if ($moverOU.ToUpper() -eq 'S') {
+        if ($ousDeshabilitados -and $moverOU.ToUpper() -eq 'S') {
             Registrar-Log -tipoEvento "Éxito" `
                           -incidencia $incidencia `
                           -usuarioRealizador $usuarioAplicador `
                           -usuarioAfectado $matricula `
-                          -ouDestino $rutaOU `
+                          -ouDestino $ousDeshabilitados `
                           -descripcion $descripcionFinal `
                           -autorizadoRSO $rsoEstado `
-                          -resultado "Usuario deshabilitado y movido a OU '$rutaOU'"
+                          -resultado "Usuario deshabilitado y movido a OU '$ousDeshabilitados'"
         } else {
             Registrar-Log -tipoEvento "Éxito" `
                           -incidencia $incidencia `
@@ -996,7 +1004,7 @@ function Auditar-UsuariosInactivos90Dias {
     Write-Host "=== FUNCION: Auditar usuarios inactivos >90 días ===" -ForegroundColor Cyan
 
     if ($nombreDominio -ne "vdc.adm") {
-        Write-Host "Esta función solo está disponible en el dominio 'vdc.adm'." -ForegroundColor Red
+        Write-Host "Este dominio no es vdc.adm. Acción cancelada." -ForegroundColor Red
         Pause
         return
     }
@@ -1080,7 +1088,7 @@ function Auditar-UsuariosInactivos90Dias {
     $fechaLimite = (Get-Date).AddDays(-90)
     Write-Host "`nBuscando usuarios inactivos desde antes de: $($fechaLimite.ToString('yyyy-MM-dd'))..." -ForegroundColor Yellow
 
-    # Buscar usuarios habilitados en la OU
+    # Buscar usuarios habilitados en la OU Usuarios
     $usuarios = Get-ADUser -SearchBase $rutaOU -Filter {Enabled -eq $true} -Properties LastLogonTimestamp, Name, GivenName, Surname, SamAccountName
 
     $usuariosInactivos = @()
@@ -1089,16 +1097,16 @@ function Auditar-UsuariosInactivos90Dias {
             $ultimaConexion = [datetime]::FromFileTime($user.LastLogonTimestamp)
             if ($ultimaConexion -lt $fechaLimite) {
                 $usuariosInactivos += [PSCustomObject]@{
-                    Matricula       = $user.SamAccountName
-                    NombreCompleto  = "$($user.GivenName) $($user.Surname)"
-                    UltimaConexion  = $ultimaConexion.ToString("yyyy-MM-dd HH:mm:ss")
+                    Matricula = $user.SamAccountName
+                    NombreCompleto = "$($user.GivenName) $($user.Surname)"
+                    UltimaConexion = $ultimaConexion.ToString("yyyy-MM-dd")
                 }
             }
         } else {
             $usuariosInactivos += [PSCustomObject]@{
-                Matricula       = $user.SamAccountName
-                NombreCompleto  = "$($user.GivenName) $($user.Surname)"
-                UltimaConexion  = "Nunca ha iniciado sesión"
+                Matricula = $user.SamAccountName
+                NombreCompleto = "$($user.GivenName) $($user.Surname)"
+                UltimaConexion = "Nunca ha iniciado sesión"
             }
         }
     }
@@ -1122,13 +1130,12 @@ function Auditar-UsuariosInactivos90Dias {
     # Opciones de acción
     Write-Host "`n¿Qué desea hacer con estos usuarios?" -ForegroundColor Yellow
     Write-Host "1. Deshabilitar y mover todos automáticamente"
-    Write-Host "2. Procesar uno a uno"
+    Write-Host "2. Seleccionar uno a uno"
     Write-Host "3. Salir sin realizar ninguna acción"
     $accionElegida = Read-Host "Elija una opción (1, 2 o 3)"
 
     switch ($accionElegida) {
         "1" {
-            # Buscar OU que contenga 'deshabilitado'
             $ousDeshabilitados = Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -match "deshabilitado" } | Select-Object -First 1 -ExpandProperty DistinguishedName
 
             if (!$ousDeshabilitados) {
@@ -1137,57 +1144,40 @@ function Auditar-UsuariosInactivos90Dias {
                               -incidencia $incidencia `
                               -usuarioRealizador $usuarioAplicador `
                               -autorizadoRSO $rsoEstado `
-                              -resultado "No se encontró OU con 'deshabilitado'."
+                              -resultado "No se encontró OU de deshabilitados"
                 Pause
                 return
             }
 
-            foreach ($u in $usuariosInactivos) {
+            foreach ($u in $usuariosInactivos.Matricula) {
                 try {
-                    Disable-ADAccount -Identity $u.Matricula
-                    Move-ADObject -Identity $u.Matricula -TargetPath $ousDeshabilitados -ErrorAction Stop
-                    Write-Host "Usuario '$($u.Matricula)' deshabilitado y movido a '$ousDeshabilitados'" -ForegroundColor Green
-
-                    # Actualizar descripción
-                    $descAntigua = (Get-ADUser -Identity $u.Matricula -Properties Description).Description
-                    $descNueva = "Deshabilitado por inactividad >90 días. Motivo: Auditoría automática. Fecha: $(Get-Date -Format yyyy-MM-dd)"
-                    $descFinal = if ($descAntigua) { "$descAntigua | $descNueva" } else { $descNueva }
-                    Set-ADUser -Identity $u.Matricula -Description $descFinal
-
-                    Registrar-Log -tipoEvento "Éxito" `
-                                  -incidencia $incidencia `
-                                  -usuarioRealizador $usuarioAplicador `
-                                  -usuarioAfectado $u.Matricula `
-                                  -ouDestino $ousDeshabilitados `
-                                  -descripcion $descFinal `
-                                  -autorizadoRSO $rsoEstado `
-                                  -resultado "Usuario deshabilitado y movido a OU '$ousDeshabilitados'"
+                    Disable-ADAccount -Identity $u
+                    Move-ADObject -Identity $u -TargetPath $ousDeshabilitados -ErrorAction Stop
+                    Write-Host "Usuario '$u' deshabilitado y movido a '$ousDeshabilitados'" -ForegroundColor Green
                 } catch {
-                    Registrar-Log -tipoEvento "Error" `
-                                  -incidencia $incidencia `
-                                  -usuarioRealizador $usuarioAplicador `
-                                  -usuarioAfectado $u.Matricula `
-                                  -autorizadoRSO $rsoEstado `
-                                  -resultado "Error al mover/deshabilitar usuario: $_"
-                    Write-Host "Error al procesar '$($u.Matricula)': $_" -ForegroundColor Red
+                    Write-Host "Error al procesar '$u': $_" -ForegroundColor Red
                 }
             }
         }
 
         "2" {
+            $ousDeshabilitados = Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -match "deshabilitado" } | Select-Object -First 1 -ExpandProperty DistinguishedName
+
+            if (!$ousDeshabilitados) {
+                Write-Host "No se encontró una OU de deshabilitados. Movimiento no posible." -ForegroundColor Red
+            }
+
             foreach ($u in $usuariosInactivos) {
                 Clear-Host
                 Write-Host "=== USUARIO ===" -ForegroundColor Yellow
                 Write-Host "Matrícula:     $($u.Matricula)" -ForegroundColor White
                 Write-Host "Nombre:        $($u.NombreCompleto)" -ForegroundColor White
-                Write-Host "Última conexión: $($u.UltimaConexion)" -ForegroundColor White
+                Write-Host "Último acceso: $($u.UltimaConexion)" -ForegroundColor White
 
                 $procesar = Read-Host "¿Deshabilitar y mover este usuario? (S/N)"
                 if ($procesar.ToUpper() -eq 'S') {
                     try {
                         Disable-ADAccount -Identity $u.Matricula
-                        $ousDeshabilitados = Get-ADOrganizationalUnit -Filter * | Where-Object { $_.Name -match "deshabilitado" } | Select-Object -First 1 -ExpandProperty DistinguishedName
-
                         if ($ousDeshabilitados) {
                             Move-ADObject -Identity $u.Matricula -TargetPath $ousDeshabilitados -ErrorAction Stop
                             Write-Host "Usuario movido a la OU destino." -ForegroundColor Green
@@ -1195,32 +1185,31 @@ function Auditar-UsuariosInactivos90Dias {
 
                         # Actualizar descripción
                         $descAntigua = (Get-ADUser -Identity $u.Matricula -Properties Description).Description
-                        $descNueva = "Deshabilitado por inactividad >90 días. Motivo: Auditoría manual. Fecha: $(Get-Date -Format yyyy-MM-dd)"
+                        $descNueva = "Deshabilitado por inactividad >90 días. Motivo: Auditoría automática. Fecha: $(Get-Date -Format yyyy-MM-dd)"
                         $descFinal = if ($descAntigua) { "$descAntigua | $descNueva" } else { $descNueva }
+
                         Set-ADUser -Identity $u.Matricula -Description $descFinal
 
                         Registrar-Log -tipoEvento "Éxito" `
-                                      -incidencia $incidencia `
+                                      -incidencia "Auditar usuarios inactivos >90 días" `
                                       -usuarioRealizador $usuarioAplicador `
                                       -usuarioAfectado $u.Matricula `
                                       -ouDestino $ousDeshabilitados `
                                       -descripcion $descFinal `
                                       -autorizadoRSO $rsoEstado `
-                                      -resultado "Usuario deshabilitado y movido a OU '$ousDeshabilitados'."
-
-                        Write-Host "Usuario '$($u.Matricula)' deshabilitado y movido." -ForegroundColor Green
+                                      -resultado "Usuario deshabilitado y movido a OU '$ousDeshabilitados'"
                     } catch {
                         Registrar-Log -tipoEvento "Error" `
-                                      -incidencia $incidencia `
+                                      -incidencia "Auditar usuarios inactivos >90 días" `
                                       -usuarioRealizador $usuarioAplicador `
                                       -usuarioAfectado $u.Matricula `
                                       -autorizadoRSO $rsoEstado `
-                                      -resultado "Error al mover usuario: $_"
-                        Write-Host "Error al mover usuario: $_" -ForegroundColor Red
+                                      -resultado "Error al mover/deshabilitar usuario: $_"
+                        Write-Host "Error al procesar '$($u.Matricula)': $_" -ForegroundColor Red
                     }
                 } else {
                     Registrar-Log -tipoEvento "Información" `
-                                  -incidencia $incidencia `
+                                  -incidencia "Auditar usuarios inactivos >90 días" `
                                   -usuarioRealizador $usuarioAplicador `
                                   -usuarioAfectado $u.Matricula `
                                   -autorizadoRSO $rsoEstado `
@@ -1233,7 +1222,7 @@ function Auditar-UsuariosInactivos90Dias {
         "3" {
             Write-Host "No se han realizado cambios." -ForegroundColor Yellow
             Registrar-Log -tipoEvento "Información" `
-                          -incidencia $incidencia `
+                          -incidencia "Auditar usuarios inactivos >90 días" `
                           -usuarioRealizador $usuarioAplicador `
                           -autorizadoRSO $rsoEstado `
                           -resultado "Auditoría completada sin acciones"
@@ -1244,216 +1233,7 @@ function Auditar-UsuariosInactivos90Dias {
         default {
             Write-Host "Opción inválida." -ForegroundColor Red
             Registrar-Log -tipoEvento "Error" `
-                          -incidencia $incidencia `
-                          -usuarioRealizador $usuarioAplicador `
-                          -autorizadoRSO $rsoEstado `
-                          -resultado "Opción inválida seleccionada: $accionElegida"
-            Pause
-            return
-        }
-    }
-
-    Write-Host ""
-    Write-Host "Auditoría completada." -ForegroundColor Green
-    Pause
-}
-
-# Función: Auditar usuarios deshabilitados hace más de 60 días
-function Auditar-UsuariosDeshabilitados60Dias {
-    Write-Host "=== FUNCION: Auditar usuarios deshabilitados >60 días ===" -ForegroundColor Cyan
-
-    if (-not $esDC) {
-        Write-Host "Esta acción solo puede realizarse en un Controlador de Dominio." -ForegroundColor Red
-        Pause
-        return
-    }
-
-    if ($nombreDominio -ne "vdc.adm") {
-        Write-Host "Esta función solo está disponible en el dominio 'vdc.adm'." -ForegroundColor Red
-        Pause
-        return
-    }
-
-    # Confirmar usuario que aplica el cambio
-    $usuarioAplicadorAuto = $env:USERNAME
-    $confirmarUsuario = Read-Host "¿El usuario que aplica el cambio es '$usuarioAplicadorAuto'? (S/N)"
-    if ($confirmarUsuario.ToUpper() -eq 'S') {
-        $usuarioAplicador = $usuarioAplicadorAuto
-    } else {
-        do {
-            $usuarioAplicador = Read-Host "Ingrese el nombre del usuario que aplica el cambio"
-            if ([string]::IsNullOrWhiteSpace($usuarioAplicador)) {
-                Write-Host "Debe ingresar un nombre válido." -ForegroundColor Red
-            }
-        } while ([string]::IsNullOrWhiteSpace($usuarioAplicador))
-    }
-
-    # Preguntar por autorización del RSO
-    do {
-        Write-Host "`n¿Acción autorizada por el RSO? Elija una opción:"
-        Write-Host "1. Sí"
-        Write-Host "2. No"
-        Write-Host "3. No Aplica"
-        $opcionRSO = Read-Host "Seleccione una opción (1, 2 o 3)"
-        
-        switch ($opcionRSO) {
-            "1" { 
-                $rsoEstado = "Autorizada" 
-                $continuar = $true
-            }
-            "2" { 
-                $rsoEstado = "No autorizada" 
-                $continuar = $false 
-            }
-            "3" { 
-                $rsoEstado = "No aplica" 
-                $continuar = $true 
-            }
-            default {
-                Write-Host "Opción inválida. Por favor, seleccione 1, 2 o 3." -ForegroundColor Red
-                $continuar = $null
-            }
-        }
-    } while ($continuar -eq $null)
-
-    if (-not $continuar) {
-        Registrar-Log -tipoEvento "Información" `
-                      -incidencia "Auditar usuarios deshabilitados >60 días" `
-                      -usuarioRealizador $usuarioAplicador `
-                      -autorizadoRSO $rsoEstado `
-                      -resultado "Acción cancelada por falta de autorización"
-        Write-Host "La acción fue cancelada." -ForegroundColor Red
-        Pause
-        return
-    }
-
-    Registrar-Log -tipoEvento "Información" `
-                  -incidencia "Auditar usuarios deshabilitados >60 días" `
-                  -usuarioRealizador $usuarioAplicador `
-                  -autorizadoRSO $rsoEstado `
-                  -resultado "Iniciando auditoría"
-
-    # Buscar usuarios deshabilitados
-    $usuarios = Get-ADUser -Filter {Enabled -eq $false} -Properties whenChanged, Name, GivenName, Surname, SamAccountName
-
-    $fechaLimite = (Get-Date).AddDays(-60)
-    $usuariosInactivos = @()
-
-    foreach ($user in $usuarios) {
-        $deshabilitadoDesde = $user.whenChanged
-        if ($deshabilitadoDesde -lt $fechaLimite) {
-            $usuariosInactivos += [PSCustomObject]@{
-                Matricula       = $user.SamAccountName
-                NombreCompleto  = "$($user.GivenName) $($user.Surname)"
-                DeshabilitadoDesde = $deshabilitadoDesde.ToString("yyyy-MM-dd")
-            }
-        }
-    }
-
-    if ($usuariosInactivos.Count -eq 0) {
-        Write-Host "No hay usuarios deshabilitados desde hace más de 60 días." -ForegroundColor Green
-        Registrar-Log -tipoEvento "Información" `
-                      -incidencia "Auditar usuarios deshabilitados >60 días" `
-                      -usuarioRealizador $usuarioAplicador `
-                      -autorizadoRSO $rsoEstado `
-                      -resultado "No se encontraron usuarios antiguos deshabilitados."
-        Pause
-        return
-    }
-
-    # Mostrar listado
-    Clear-Host
-    Write-Host "=== USUARIOS DESHABILITADOS HACE MÁS DE 60 DÍAS ===" -ForegroundColor Magenta
-    $usuariosInactivos | Format-Table -AutoSize -Property Matricula, NombreCompleto, DeshabilitadoDesde
-
-    # Preguntar qué hacer
-    Write-Host "`n¿Qué desea hacer con estos usuarios?" -ForegroundColor Yellow
-    Write-Host "1. Eliminar todos"
-    Write-Host "2. Seleccionar uno a uno"
-    Write-Host "3. Salir sin hacer nada"
-    $accionElegida = Read-Host "Elija una opción (1, 2 o 3)"
-
-    switch ($accionElegida) {
-        "1" {
-            foreach ($u in $usuariosInactivos) {
-                try {
-                    Remove-ADUser -Identity $u.Matricula -Confirm:$false -ErrorAction Stop
-                    Write-Host "Usuario '$($u.Matricula)' eliminado permanentemente." -ForegroundColor Red
-
-                    Registrar-Log -tipoEvento "Éxito" `
-                                  -incidencia "Auditar usuarios deshabilitados >60 días" `
-                                  -usuarioRealizador $usuarioAplicador `
-                                  -usuarioAfectado $u.Matricula `
-                                  -autorizadoRSO $rsoEstado `
-                                  -resultado "Usuario eliminado permanentemente."
-                } catch {
-                    Registrar-Log -tipoEvento "Error" `
-                                  -incidencia "Auditar usuarios deshabilitados >60 días" `
-                                  -usuarioRealizador $usuarioAplicador `
-                                  -usuarioAfectado $u.Matricula `
-                                  -autorizadoRSO $rsoEstado `
-                                  -resultado "Error al eliminar el usuario: $_"
-                    Write-Host "Error al eliminar '$($u.Matricula)': $_" -ForegroundColor Red
-                }
-            }
-        }
-
-        "2" {
-            foreach ($u in $usuariosInactivos) {
-                Clear-Host
-                Write-Host "=== USUARIO ===" -ForegroundColor Yellow
-                Write-Host "Matrícula:     $($u.Matricula)" -ForegroundColor White
-                Write-Host "Nombre:        $($u.NombreCompleto)" -ForegroundColor White
-                Write-Host "Deshabilitado desde: $($u.DeshabilitadoDesde)" -ForegroundColor White
-
-                $eliminar = Read-Host "¿Eliminar este usuario? (S/N)"
-                if ($eliminar.ToUpper() -eq 'S') {
-                    try {
-                        Remove-ADUser -Identity $u.Matricula -Confirm:$false -ErrorAction Stop
-                        Write-Host "Usuario '$($u.Matricula)' eliminado permanentemente." -ForegroundColor Red
-
-                        Registrar-Log -tipoEvento "Éxito" `
-                                      -incidencia "Auditar usuarios deshabilitados >60 días" `
-                                      -usuarioRealizador $usuarioAplicador `
-                                      -usuarioAfectado $u.Matricula `
-                                      -autorizadoRSO $rsoEstado `
-                                      -resultado "Usuario eliminado correctamente."
-                    } catch {
-                        Registrar-Log -tipoEvento "Error" `
-                                      -incidencia "Auditar usuarios deshabilitados >60 días" `
-                                      -usuarioRealizador $usuarioAplicador `
-                                      -usuarioAfectado $u.Matricula `
-                                      -autorizadoRSO $rsoEstado `
-                                      -resultado "Error al eliminar el usuario: $_"
-                        Write-Host "Error al eliminar '$($u.Matricula)': $_" -ForegroundColor Red
-                    }
-                } else {
-                    Registrar-Log -tipoEvento "Información" `
-                                  -incidencia "Auditar usuarios deshabilitados >60 días" `
-                                  -usuarioRealizador $usuarioAplicador `
-                                  -usuarioAfectado $u.Matricula `
-                                  -autorizadoRSO $rsoEstado `
-                                  -resultado "Usuario omitido por decisión manual."
-                    Write-Host "Usuario '$($u.Matricula)' mantenido." -ForegroundColor Yellow
-                }
-            }
-        }
-
-        "3" {
-            Write-Host "No se han realizado cambios." -ForegroundColor Yellow
-            Registrar-Log -tipoEvento "Información" `
-                          -incidencia "Auditar usuarios deshabilitados >60 días" `
-                          -usuarioRealizador $usuarioAplicador `
-                          -autorizadoRSO $rsoEstado `
-                          -resultado "Auditoría completada sin acciones"
-            Pause
-            return
-        }
-
-        default {
-            Write-Host "Opción inválida." -ForegroundColor Red
-            Registrar-Log -tipoEvento "Error" `
-                          -incidencia "Auditar usuarios deshabilitados >60 días" `
+                          -incidencia "Auditar usuarios inactivos >90 días" `
                           -usuarioRealizador $usuarioAplicador `
                           -autorizadoRSO $rsoEstado `
                           -resultado "Opción inválida seleccionada: $accionElegida"
@@ -1491,19 +1271,59 @@ function Desbloquear-UsuarioContraseña {
                 Write-Host "Debe ingresar un nombre válido." -ForegroundColor Red
             }
         } while ([string]::IsNullOrWhiteSpace($usuarioAplicador))
+    }
 
+    # Preguntar por autorización RSO
+    do {
+        Write-Host "`n¿Acción autorizada por el RSO? Elija una opción:"
+        Write-Host "1. Sí"
+        Write-Host "2. No"
+        Write-Host "3. No Aplica"
+        $opcionRSO = Read-Host "Elija una opción (1, 2 o 3)"
+        
+        switch ($opcionRSO) {
+            "1" { 
+                $rsoEstado = "Autorizada" 
+                $continuar = $true
+            }
+            "2" { 
+                $rsoEstado = "No autorizada" 
+                $continuar = $false 
+            }
+            "3" { 
+                $rsoEstado = "No aplica" 
+                $continuar = $true 
+            }
+            default {
+                Write-Host "Opción inválida. Por favor, seleccione 1, 2 o 3." -ForegroundColor Red
+                $continuar = $null
+            }
+        }
+    } while ($continuar -eq $null)
+
+    if (-not $continuar) {
         Registrar-Log -tipoEvento "Información" `
                       -incidencia $incidencia `
                       -usuarioRealizador $usuarioAplicador `
-                      -resultado "Iniciando proceso de desbloqueo/restablecimiento"
+                      -autorizadoRSO $rsoEstado `
+                      -resultado "Acción cancelada por falta de autorización"
+        Write-Host "La acción fue cancelada." -ForegroundColor Red
+        Pause
+        return
     }
+
+    Registrar-Log -tipoEvento "Información" `
+                  -incidencia $incidencia `
+                  -usuarioRealizador $usuarioAplicador `
+                  -autorizadoRSO $rsoEstado `
+                  -resultado "Iniciando proceso de desbloqueo/restablecimiento"
 
     # Pedir sAMAccountName del usuario afectado
     do {
         $matricula = Read-Host "Ingrese la matrícula (sAMAccountName) del usuario"
         try {
             $user = Get-ADUser -Identity $matricula -Properties Name, DistinguishedName, Enabled, LockedOut, Description, GivenName, Surname
-            Write-Host "Usuario encontrado: $($user.Name)" -ForegroundColor Green
+            Write-Host "Nombre completo: $($user.GivenName) $($user.Surname)" -ForegroundColor Green
             break
         } catch {
             Write-Host "Usuario no encontrado: $_" -ForegroundColor Red
@@ -1512,15 +1332,17 @@ function Desbloquear-UsuarioContraseña {
 
     $nombreCompleto = "$($user.GivenName) $($user.Surname)"
     $ouActual = $user.DistinguishedName -replace '^CN=.*?(OU=.*)','$1'
+    $estadoCuenta = if ($user.Enabled) { "Habilitada" } else { "Deshabilitada" }
+    $estadoBloqueo = if ($user.LockedOut) { "Bloqueada" } else { "Desbloqueada" }
 
     # Mostrar estado actual
     Clear-Host
-    Write-Host "=== ESTADO ACTUAL DEL USUARIO ===" -ForegroundColor Yellow
+    Write-Host "=== ESTADO ACTUAL ===" -ForegroundColor Yellow
     Write-Host "Matrícula:      $matricula" -ForegroundColor White
     Write-Host "Nombre:         $nombreCompleto" -ForegroundColor White
-    Write-Host "OU actual:     $ouActual" -ForegroundColor White
-    Write-Host "Habilitado:     $($user.Enabled)" -ForegroundColor White
-    Write-Host "Bloqueado:      $($user.LockedOut)" -ForegroundColor White
+    Write-Host "OU actual:      $ouActual" -ForegroundColor White
+    Write-Host "Estado de cuenta: $estadoCuenta" -ForegroundColor White
+    Write-Host "Estado de bloqueo: $estadoBloqueo" -ForegroundColor White
 
     # Confirmar acción
     $confirmar = Read-Host "¿Desea continuar con este usuario? (S/N)"
@@ -1542,6 +1364,7 @@ function Desbloquear-UsuarioContraseña {
     if ($user.LockedOut) {
         Unlock-ADAccount -Identity $matricula
         $accionesRealizadas += "Cuenta desbloqueada"
+        Write-Host "Usuario desbloqueado." -ForegroundColor Green
     }
 
     if (-not $user.Enabled) {
@@ -1550,25 +1373,26 @@ function Desbloquear-UsuarioContraseña {
         if ($habilitar.ToUpper() -eq 'S') {
             Enable-ADAccount -Identity $matricula
             $accionesRealizadas += "Cuenta habilitada"
+            Write-Host "Usuario habilitado." -ForegroundColor Green
         }
     }
 
     # Comprobar si está en OU de deshabilitados
     if ($ouActual -match "deshabilitado") {
-        Write-Host "El usuario está en una OU que contiene 'deshabilitado'." -ForegroundColor Yellow
+        Write-Host "`nEl usuario está en una OU que contiene 'deshabilitado'." -ForegroundColor Yellow
         $moverOU = Read-Host "¿Mover a otra OU? (S/N)"
         if ($moverOU.ToUpper() -eq 'S') {
             do {
                 $rutaOU = Read-Host "Escriba la OU destino"
                 try {
                     $ouDestino = Get-ADOrganizationalUnit -Identity $rutaOU -ErrorAction Stop
-                    Move-ADObject -Identity $user.DistinguishedName -TargetPath $ouDestino -ErrorAction Stop
+                    Move-ADObject -Identity $user.DistinguishedName -TargetPath $rutaOU -ErrorAction Stop
                     $accionesRealizadas += "Movido a OU: $rutaOU"
                     Write-Host "Usuario movido a la OU destino." -ForegroundColor Green
                 } catch {
                     Write-Host "OU no válida: $_" -ForegroundColor Red
                 }
-            } while ($true)
+            } while (-not $ouDestino)
         } else {
             $rutaOU = $ouActual
         }
@@ -1591,23 +1415,13 @@ function Desbloquear-UsuarioContraseña {
             Write-Host "Contraseña generada: $passwordPlano" -ForegroundColor Yellow
         }
 
-        try {
-            Set-ADAccountPassword -Identity $matricula -Reset -NewPassword $password -ErrorAction Stop
-            $accionesRealizadas += "Contraseña cambiada"
-            Write-Host "Contraseña actualizada." -ForegroundColor Green
-        } catch {
-            Registrar-Log -tipoEvento "Error" `
-                          -incidencia $incidencia `
-                          -usuarioRealizador $usuarioAplicador `
-                          -usuarioAfectado $matricula `
-                          -resultado "Error al cambiar contraseña: $_"
-            Write-Host "Error al cambiar contraseña: $_" -ForegroundColor Red
-        }
+        Set-ADAccountPassword -Identity $matricula -Reset -NewPassword $password -ErrorAction Stop
+        Write-Host "Contraseña actualizada." -ForegroundColor Green
     }
 
     # Actualizar descripción
     $descripcionAntigua = $user.Description
-    $descripcionNueva = "Deshabilitado por motivo: $incidencia. Acción realizada por: $usuarioAplicador. Fecha: $(Get-Date -Format yyyy-MM-dd)"
+    $descripcionNueva = "Desbloqueado/habilitado por motivo: $incidencia. Acción realizada por: $usuarioAplicador. Fecha: $(Get-Date -Format yyyy-MM-dd)"
     if ($descripcionAntigua) {
         $descripcionFinal = "$descripcionAntigua | $descripcionNueva"
     } else {
@@ -1616,7 +1430,7 @@ function Desbloquear-UsuarioContraseña {
 
     Set-ADUser -Identity $matricula -Description $descripcionFinal
 
-    # Registro final
+    # Registro final en log
     Registrar-Log -tipoEvento "Éxito" `
                   -incidencia $incidencia `
                   -usuarioRealizador $usuarioAplicador `
@@ -1637,10 +1451,15 @@ function Desbloquear-UsuarioContraseña {
         Write-Host " - $accion" -ForegroundColor Green
     }
 
-    Write-Host "Contraseña:     $contrasenaMostrada" -ForegroundColor White
+    if ($cambiarPass.ToUpper() -eq 'S') {
+        Write-Host "Contraseña nueva: $contrasenaMostrada" -ForegroundColor Green
+    } else {
+        Write-Host "Contraseña: No se cambió" -ForegroundColor White
+    }
+
     Write-Host "Descripción actualizada: $descripcionFinal" -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Proceso completado." -ForegroundColor Green
+    Write-Host "Proceso completado correctamente." -ForegroundColor Green
     Pause
 }
 
@@ -1670,7 +1489,7 @@ function Agregar-ListadoUsuarios {
         } while ([string]::IsNullOrWhiteSpace($usuarioAplicador))
     }
 
-    # Preguntar por autorización del RSO
+    # Preguntar por autorización RSO
     do {
         Write-Host "`n¿Acción autorizada por el RSO? Elija una opción:"
         Write-Host "1. Sí"
@@ -1723,16 +1542,16 @@ function Agregar-ListadoUsuarios {
                 $usuariosCSV = Import-Csv -Path $rutaCSV -Encoding Default
                 $cabeceras = $usuariosCSV[0].PSObject.Properties.Name
                 if ($cabeceras -contains "matricula" -and $cabeceras -contains "nombre" -and $cabeceras -contains "apellidos" -and $cabeceras -contains "mail") {
-                    Write-Host "Fichero CSV válido." -ForegroundColor Green
+                    Write-Host "Fichero CSV válido. Procediendo..." -ForegroundColor Green
                     break
                 } else {
-                    Write-Host "El CSV debe tener columnas: matricula, nombre, apellidos, mail" -ForegroundColor Red
+                    Write-Host "El CSV no tiene las columnas requeridas (matricula, nombre, apellidos, mail)" -ForegroundColor Red
                 }
             } catch {
                 Write-Host "Archivo no compatible: $_" -ForegroundColor Red
             }
         } else {
-            Write-Host "El archivo no existe." -ForegroundColor Red
+            Write-Host "El archivo no existe o la ruta es inválida." -ForegroundColor Red
         }
     } while ($true)
 
@@ -1749,18 +1568,86 @@ function Agregar-ListadoUsuarios {
         }
     } while (-not $ouValida)
 
-    # Buscar grupos en la OU destino
+    # Buscar grupos en la OU
     $gruposEnOU = Get-ADGroup -Filter * -SearchBase $rutaOU | Select-Object -ExpandProperty Name
 
     if ($gruposEnOU.Count -gt 0) {
         Write-Host "Grupos disponibles en la OU destino:" -ForegroundColor Green
-        $gruposEnOU | ForEach-Object { Write-Host " - $_" -ForegroundColor White }
+        $gruposEnOU | ForEach-Host { Write-Host " - $_" -ForegroundColor White }
     }
 
-    # Confirmar grupos a asignar
-    $gruposAAgregar = $gruposEnOU
+    # Preguntar qué grupos aplicar
+    $gruposAAgregar = @()
+    $grupoInput = Read-Host "¿Desea asociar estos usuarios a algún grupo? (S/N)"
+    if ($grupoInput.ToUpper() -eq 'S') {
+        $gruposAAgregar = $gruposEnOU
+    }
+
+    # Resumen final
+    Clear-Host
+    Write-Host "=== RESUMEN DE ALTA MASIVA ===" -ForegroundColor Cyan
+    Write-Host "Ruta del CSV:   $rutaCSV" -ForegroundColor White
+    Write-Host "OU destino:    $rutaOU" -ForegroundColor White
+    Write-Host "Grupos asignados: $($gruposAAgregar -join ', ')" -ForegroundColor Green
+
     $confirmar = Read-Host "¿Crear usuarios ahora? (S/N)"
-    if ($confirmar.ToUpper() -ne 'S') {
+    if ($confirmar.ToUpper() -eq 'S') {
+        foreach ($u in $usuariosCSV) {
+            $matricula = $u.matricula.Trim()
+            $nombre = $u.nombre.Trim()
+            $apellido = $u.apellidos.Trim()
+            $mail = $u.mail.Trim()
+
+            try {
+                # Generar contraseña segura
+                $passwordPlano = Generar-ContrasenaSegura -longitud 16
+                $password = $passwordPlano | ConvertTo-SecureString -AsPlainText -Force
+
+                # Descripción del usuario
+                $descripcion = "Alta por listado. Incidencia: $incidencia. Autorizado por RSO: $rsoEstado"
+                Write-Host "Descripción del usuario: $descripcion" -ForegroundColor Yellow
+
+                # Crear usuario
+                New-ADUser -Name "$nombre $apellido" `
+                           -GivenName $nombre `
+                           -Surname $apellido `
+                           -SamAccountName $matricula `
+                           -UserPrincipalName "$matricula@$nombreDominio" `
+                           -EmailAddress $mail `
+                           -AccountPassword $password `
+                           -Enabled $true `
+                           -Path $rutaOU `
+                           -Description $descripcion
+
+                if ($gruposAAgregar.Count -gt 0) {
+                    foreach ($grupo in $gruposAAgregar) {
+                        Add-ADGroupMember -Identity $grupo -Members $matricula -ErrorAction Stop
+                        Write-Host "Usuario '$matricula' creado y grupos asignados." -ForegroundColor Green
+                    }
+                } else {
+                    Write-Host "Usuario '$matricula' creado sin grupos." -ForegroundColor Yellow
+                }
+
+                Registrar-Log -tipoEvento "Éxito" `
+                              -incidencia $incidencia `
+                              -usuarioRealizador $usuarioAplicador `
+                              -usuarioAfectado $matricula `
+                              -ouDestino $rutaOU `
+                              -gruposAsignados $gruposAAgregar `
+                              -descripcion $descripcion `
+                              -autorizadoRSO $rsoEstado `
+                              -resultado "Usuario creado correctamente."
+            } catch {
+                Registrar-Log -tipoEvento "Error" `
+                              -incidencia $incidencia `
+                              -usuarioRealizador $usuarioAplicador `
+                              -usuarioAfectado $matricula `
+                              -autorizadoRSO $rsoEstado `
+                              -resultado "Error al crear el usuario: $_"
+                Write-Host "Error al crear el usuario: $_" -ForegroundColor Red
+            }
+        }
+    } else {
         Registrar-Log -tipoEvento "Información" `
                       -incidencia $incidencia `
                       -usuarioRealizador $usuarioAplicador `
@@ -1768,53 +1655,6 @@ function Agregar-ListadoUsuarios {
                       -autorizadoRSO $rsoEstado `
                       -resultado "Acción cancelada por el usuario."
         Write-Host "Acción cancelada por el usuario." -ForegroundColor Red
-        Pause
-        return
-    }
-
-    # Procesar cada usuario del CSV
-    foreach ($u in $usuariosCSV) {
-        $matricula = $u.matricula.Trim()
-        $nombre = $u.nombre.Trim()
-        $apellido = $u.apellidos.Trim()
-        $mail = $u.mail.Trim()
-
-        try {
-            # Generar contraseña segura
-            $passwordPlano = Generar-ContrasenaSegura -longitud 16
-            $password = $passwordPlano | ConvertTo-SecureString -AsPlainText -Force
-
-            # Crear usuario
-            New-ADUser -Name "$nombre $apellido" `
-                       -GivenName $nombre `
-                       -Surname $apellido `
-                       -SamAccountName $matricula `
-                       -UserPrincipalName "$matricula@$nombreDominio" `
-                       -EmailAddress $mail `
-                       -AccountPassword $password `
-                       -Enabled $true `
-                       -Path $rutaOU `
-                       -Description "Alta por listado. Incidencia: $incidencia. Autorizado por RSO: $rsoEstado"
-
-            Add-ADGroupMember -Identity $gruposAAgregar -Members $matricula -ErrorAction Stop
-
-            Write-Host "Usuario '$matricula' creado y grupos asignados." -ForegroundColor Green
-            Registrar-Log -tipoEvento "Éxito" `
-                          -incidencia $incidencia `
-                          -usuarioRealizador $usuarioAplicador `
-                          -usuarioAfectado $matricula `
-                          -ouDestino $rutaOU `
-                          -gruposAsignados $gruposAAgregar `
-                          -descripcion "Alta por listado. Incidencia: $incidencia. Autorizado por RSO: $rsoEstado"
-            -resultado "Usuario creado correctamente."
-        } catch {
-            Registrar-Log -tipoEvento "Error" `
-                          -incidencia $incidencia `
-                          -usuarioRealizador $usuarioAplicador `
-                          -usuarioAfectado $matricula `
-                          -resultado "Error al crear el usuario: $_"
-            Write-Host "Error al crear el usuario: $_" -ForegroundColor Red
-        }
     }
 
     Write-Host ""
@@ -1826,14 +1666,14 @@ function Agregar-ListadoUsuarios {
 function MostrarMenu {
     Write-Host "Menú Principal"
     Write-Host "=============="
-    Write-Host "1. Agregar-Usuario"
-    Write-Host "2. Ver-EstadoUsuario"
-    Write-Host "3. Modificar-Usuario"
-    Write-Host "4. Eliminar-Usuario"
-    Write-Host "5. Auditar-UsuariosInactivos90Dias"
-    Write-Host "6. Auditar-UsuariosDeshabilitados60Dias"
-    Write-Host "7. Desbloquear-UsuarioContraseña"
-    Write-Host "8. Agregar-ListadoUsuarios"
+    Write-Host "1. Agregar un usuario"
+    Write-Host "2. Ver estado de un usuario"
+    Write-Host "3. Modificar un usuario"
+    Write-Host "4. Eliminar un usuario"
+    Write-Host "5. Auditar usuarios inactivos >90 días"
+    Write-Host "6. Auditar usuarios deshabilitados >60 días"
+    Write-Host "7. Deshabilitar usuario / Restablecer contraseña"
+    Write-Host "8. Agregar listado de usuarios desde CSV"
     Write-Host "Q. Salir"
 }
 
@@ -1858,10 +1698,13 @@ do {
                           -incidencia "El script ha finalizado." `
                           -usuarioRealizador $env:USERNAME `
                           -resultado "Finalizado por el usuario"
-            break
+            Pause
+            return
         }
         default { Write-Host "Opción inválida." -ForegroundColor Red }
     }
 
     Write-Host ""
-} while ($selection -ne 'q')
+    Write-Host "Presione Enter para continuar..." -ForegroundColor Yellow
+    Read-Host
+} until ($selection -eq 'q')
